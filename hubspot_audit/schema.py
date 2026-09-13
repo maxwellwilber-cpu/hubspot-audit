@@ -131,6 +131,19 @@ class PortalProfile:
         return ids
 
     @property
+    def all_stage_ids(self):
+        """Every stage in every pipeline, open or closed.
+
+        Distinct from open_stage_ids because a pipeline consisting only of
+        closed stages still classifies deals perfectly well, while having no
+        stages at all means nothing can be classified.
+        """
+        ids = set()
+        for pipeline in self.pipelines:
+            ids |= {s["id"] for s in pipeline.stages}
+        return ids
+
+    @property
     def closed_won_stage_ids(self):
         ids = set()
         for pipeline in self.pipelines:

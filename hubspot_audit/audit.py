@@ -86,7 +86,11 @@ def run_audit(client, profile=None, checks=None, now=None, max_records=None):
             continue
         if reason:
             skip_reasons[check] = reason
-        elif max_records and isinstance(check, CrossCheck):
+        elif max_records and len(_streams_of(check)) > 1:
+            # Only checks that JOIN two streams are affected. A check reading
+            # one stream's own embedded associations is no more truncated than
+            # any single-object check, and skipping it cost a HIGH-severity
+            # result on every sampled run for no reason.
             skip_reasons[check] = (
                 "skipped because --max-records truncates one object type and "
                 "not another, which would make this check report records as "
@@ -156,12 +160,18 @@ def run_audit(client, profile=None, checks=None, now=None, max_records=None):
                 % (", ".join(broken), stream_errors[broken[0]])))
             continue
 
-        # Strictly the stream this check reports against. Borrowing another
-        # stream's count was how a cross-object check could report PASS on a
-        # portal with zero contacts: "Won deals whose contacts are not marked
-        # customers -- 200 contacts examined", on a portal with no contacts.
-        seen = records_seen.get(check.object_type, 0)
+        # Every stream a check reads has to be non-empty. Checking only the
+        # stream it reports against left the other half invisible: a portal
+        # with contacts and zero deals would render "Won deals whose contacts
+        # are not marked customers -- 18 contacts examined" under the heading
+        # "Checks that came back clean", having looked at no deals at all.
+        empty = [s for s in streams if records_seen.get(s, 0) == 0]
+        if empty:
+            results.append(not_run(
+                check, "no %s records exist in this portal" % " or ".join(empty)))
+            continue
 
+        seen = records_seen.get(check.object_type, 0)
         results.append(run_check(check, profile, seen, check.finish))
 
     return AuditReport(profile, results, started_at=started,

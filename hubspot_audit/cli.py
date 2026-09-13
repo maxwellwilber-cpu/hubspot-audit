@@ -50,6 +50,11 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
+    if args.max_records is not None and args.max_records < 1:
+        sys.stderr.write("--max-records must be 1 or more. Omit it to scan "
+                         "the whole portal.\n")
+        return 2
+
     if not args.token:
         sys.stderr.write(
             "No token. Set HUBSPOT_TOKEN or pass --token.\n"

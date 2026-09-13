@@ -12,7 +12,7 @@ from ..dealstage import OPTIONAL_PROPERTIES, StageResolver
 from ..models import Finding, Severity
 from ..normalize import clean
 from ..phrasing import have, is_are, n_of
-from .base import Check
+from .base import Check, CheckNotApplicable
 
 #: An open deal untouched for this long is not a live deal, it is a ghost.
 #: Deliberately generous. Long enterprise cycles exist, and a false "your
@@ -61,8 +61,12 @@ def _parse_ts(value):
             return None
         if abs(number) < _EPOCH_FLOOR:
             return None
-        seconds = number / 1000.0 if abs(number) >= _MILLIS_THRESHOLD else float(number)
         try:
+            # float() on a several-hundred-digit int raises OverflowError, and
+            # this line used to sit outside the guard -- one absurd value in one
+            # deal record took down the entire audit with a traceback.
+            seconds = (number / 1000.0 if abs(number) >= _MILLIS_THRESHOLD
+                       else float(number))
             return datetime.fromtimestamp(seconds, tz=timezone.utc)
         except (ValueError, OSError, OverflowError):
             return None
@@ -87,6 +91,8 @@ class _OpenDealCheck(Check):
     def __init__(self):
         self.ids = []
         self._resolver = None
+        self._seen = 0
+        self._classified = 0
 
     def requires(self, profile):
         base = super().requires(profile)
@@ -96,9 +102,25 @@ class _OpenDealCheck(Check):
         return self._resolver.open_reason()
 
     def observe(self, record):
-        if not self._resolver.is_open(record):
-            return
-        self.inspect(record)
+        self._seen += 1
+        state = self._resolver.is_open(record)
+        if state is None:
+            return  # could not be judged; counted, not guessed at
+        self._classified += 1
+        if state:
+            self.inspect(record)
+
+    def finish(self):
+        # Having seen deals and classified none of them is not a clean result.
+        if self._seen and not self._classified:
+            raise CheckNotApplicable(
+                "none of the %d deals in this portal could be classified as "
+                "open or closed: hs_is_closed is blank on every record and the "
+                "portal returned no pipeline stages" % self._seen)
+        return self.report()
+
+    def report(self):  # pragma: no cover - overridden by every subclass
+        raise NotImplementedError
 
     def inspect(self, record):  # pragma: no cover - overridden by every subclass
         raise NotImplementedError
@@ -123,7 +145,7 @@ class OpenDealPastCloseDate(_OpenDealCheck):
         if close_date and close_date < self._now:
             self.ids.append(record["id"])
 
-    def finish(self):
+    def report(self):
         if not self.ids:
             return []
         return [Finding(
@@ -181,7 +203,7 @@ class DealNoAmount(_OpenDealCheck):
         except ValueError:
             self.ids.append(record["id"])
 
-    def finish(self):
+    def report(self):
         if not self.ids:
             return []
         return [Finding(
@@ -206,7 +228,7 @@ class DealNoCloseDate(_OpenDealCheck):
         if not _parse_ts(self.prop(record, "closedate")):
             self.ids.append(record["id"])
 
-    def finish(self):
+    def report(self):
         if not self.ids:
             return []
         return [Finding(
@@ -240,7 +262,7 @@ class StaleOpenDeal(_OpenDealCheck):
         if touched < self._now - timedelta(days=self.days):
             self.ids.append(record["id"])
 
-    def finish(self):
+    def report(self):
         if not self.ids:
             return []
         return [Finding(

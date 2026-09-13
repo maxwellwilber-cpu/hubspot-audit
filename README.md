@@ -122,10 +122,10 @@ was skipped. Someone handed that report would read "no findings" as good news.
 Discovering nothing and discovering nothing wrong must never look the same.
 
 `--max-records` follows the same rule. It makes a large portal fast to sample,
-every output carries a partial-scan banner, and cross-object checks are skipped
-with a stated reason — truncating contacts while reading every company would
-otherwise report companies as orphaned when their contacts were simply never
-read.
+every output carries a partial-scan banner, and the checks that join two object
+types are skipped with a stated reason, because truncating contacts while
+reading every company would otherwise report companies as orphaned when their
+contacts were simply never read.
 
 ---
 
@@ -145,7 +145,7 @@ Missed:          0
 ```
 
 Worth being precise about what that proves. The expectation list is written
-alongside the code, so it measures whether the rules do what they claim — not
+alongside the code, so it measures whether the rules do what they claim, not
 whether they are the right rules. What it does catch is a rule that silently
 widens or narrows: the suite asserts the exact IDs, and asserts that no check
 outside the planted set fires at all.
@@ -157,7 +157,7 @@ defects. A rule that can only ever fire is not a check.
 python3 -m pytest tests/ -q
 ```
 
-211 tests, covering the checks, the normalization rules, timestamp parsing,
+215 tests, covering the checks, the normalization rules, timestamp parsing,
 pagination and retry behaviour, the report arithmetic, the read-only
 guarantee, and a 50,000-contact portal.
 
@@ -175,13 +175,14 @@ integrations:
 | Problem | Handling |
 |---|---|
 | Every portal has different properties | Schema is discovered first; checks declare what they need and skip with a reason |
-| Deal stages are renamed and reordered per portal | Resolved from the portal's own data, never from stage names — see below |
+| Deal stages are renamed and reordered per portal | Resolved from the portal's own data, never from stage names (see below) |
 | Lifecycle stages can be replaced entirely | The lifecycle check uses HubSpot's internal `customer` value and skips with a reason when a portal has no such stage |
 | Free tiers have no deals object | A contacts-only portal still runs 11 of its 13 contact-object checks; the two that need companies or deals to exist say so |
 | 100 requests per 10 seconds | Paced proactively, then backed off on 429, using HubSpot's own interval header |
 | A daily quota is not a burst limit | Fails immediately instead of sleeping through the retry budget |
 | Cursor pagination can loop | A repeated cursor terminates the scan |
 | Timestamps arrive as ISO, epoch millis, epoch seconds or `YYYYMMDD` | Parsed by magnitude, so a live 2024 deal does not land in 1970 |
+| A portal where nothing can be classified | Checks that could not make their judgement report NOT_RUN, never a clean pass |
 | 50,000 contacts | One pass per object type feeds all 27 checks; duplicate detection is hash-keyed, not pairwise |
 
 The list endpoints return only a small default set of properties unless you ask
@@ -258,11 +259,11 @@ tests/
 
 Normalization is deliberately conservative, because a missed duplicate costs a
 client some tidying and a wrong merge destroys data in their CRM. Gmail dots
-and `+tags` are **not** stripped — that rule is true of Gmail's routing and
-false as a statement about identity. Legal suffixes are stripped from the end
+and `+tags` are **not** stripped, because that rule is true of Gmail's routing
+and false as a statement about identity. Legal suffixes are stripped from the end
 of a company name but never the front, since "AG Barr" and "Barr Ltd" are not
-the same company. Weaker rules — matching companies by name, contacts by name
-and phone — are reported as a review queue rather than as confirmed
+the same company. The weaker rules, matching companies by name and contacts by
+name and phone, are reported as a review queue rather than as confirmed
 duplicates, and the finding says so. `tests/test_normalize.py` pins each of
 these.
 

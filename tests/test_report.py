@@ -104,18 +104,47 @@ def test_a_complete_run_carries_no_sampling_banner():
     assert "partial scan" not in render_markdown(report).lower()
 
 
-def test_cross_object_checks_are_skipped_when_sampling_rather_than_inventing_findings():
+def test_joining_checks_are_skipped_when_sampling_rather_than_inventing_findings():
     """Truncating contacts while reading every company would report companies
-    as orphaned when their contacts were simply never read."""
+    as orphaned when their contacts were simply never read.
+
+    Only checks that actually JOIN two streams are affected. A check reading one
+    stream's own embedded associations is no more truncated than any
+    single-object check, so it keeps running.
+    """
     with FakePortal(dirty_portal()) as portal:
         client = HubSpotClient("test-token", base_url=portal.base_url,
                                sleep=lambda _s: None)
         report = run_audit(client, max_records=3)
-    cross = [r for r in report.results if r.check_id.startswith("crossobject.")]
-    assert cross
-    for result in cross:
-        assert result.status == Status.NOT_RUN
-        assert "max-records" in result.reason
+    by_id = {r.check_id: r for r in report.results}
+
+    for check_id in ("crossobject.lifecycle_contradicts_deal",
+                     "crossobject.company_without_contacts"):
+        assert by_id[check_id].status == Status.NOT_RUN, check_id
+        assert "max-records" in by_id[check_id].reason
+
+    # These read only the deals stream, so sampling does not distort them and
+    # skipping would throw away a HIGH-severity result for nothing.
+    for check_id in ("crossobject.deal_without_contact",
+                     "crossobject.deal_without_company"):
+        assert by_id[check_id].status != Status.NOT_RUN, check_id
+
+
+def test_a_multi_stream_check_reports_not_run_when_any_of_its_streams_is_empty():
+    """A portal with contacts and no deal records.
+
+    Checking only the stream a check reports against left the other half
+    invisible: this rendered as "Won deals whose contacts are not marked
+    customers (18 contacts examined)" under "Checks that came back clean",
+    having examined no deals at all.
+    """
+    state = dirty_portal()
+    state.objects["deals"] = []
+    report = audit(state)
+    result = [r for r in report.results
+              if r.check_id == "crossobject.lifecycle_contradicts_deal"][0]
+    assert result.status == Status.NOT_RUN
+    assert "deals" in result.reason
 
 
 def test_markdown_lists_every_finding_title():

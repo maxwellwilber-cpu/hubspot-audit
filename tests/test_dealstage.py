@@ -175,3 +175,25 @@ def test_hubspot_serialises_booleans_as_strings(value, closed):
     profile = profile_for([("s", "false", "0.5")], deal_properties=("hs_is_closed",))
     resolver = StageResolver(profile)
     assert resolver.is_open(deal(dealstage="s", hs_is_closed=value)) is not closed
+
+
+def test_an_absurdly_long_number_does_not_take_down_the_whole_audit():
+    """float() on a several-hundred-digit int raises OverflowError, and the
+    conversion used to sit outside the guard. One nonsense value in one deal
+    record produced a traceback instead of a report."""
+    assert _parse_ts("1" * 400) is None
+    assert _parse_ts("9" * 5000) is None
+
+
+def test_a_portal_that_can_classify_nothing_says_so_instead_of_passing():
+    """hs_is_closed exists on the portal but is blank on the record, and there
+    are no pipeline stages to fall back on. Returning False for everything
+    would treat every deal as closed and let the open-deal checks pass having
+    judged nothing."""
+    profile = PortalProfile(
+        schemas={"deals": ObjectSchema("deals", [
+            {"name": "dealstage"}, {"name": "hs_is_closed"}])},
+        pipelines=[])
+    resolver = StageResolver(profile)
+    assert resolver.open_reason() is None       # the property exists, so it tries
+    assert resolver.is_open(deal(dealstage="x", hs_is_closed="")) is None

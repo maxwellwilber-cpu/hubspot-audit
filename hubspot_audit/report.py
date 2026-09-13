@@ -80,7 +80,8 @@ def render_terminal(report, color=False):
             if sample:
                 more = finding.count - len(sample)
                 suffix = " (+%d more)" % more if more > 0 else ""
-                lines.append("      ids:  %s%s" % (", ".join(sample), suffix))
+                label = "ids: " if finding.counts_records else "props:"
+                lines.append("      %s %s%s" % (label, ", ".join(sample), suffix))
             lines.append("")
 
     skipped = report.not_run
@@ -161,7 +162,7 @@ def render_markdown(report):
             out.append("*How this was determined:* %s" % finding.rule)
             out.append("")
             sample = finding.sample(10)
-            if sample and finding.evidence.get("unit", "").startswith("property"):
+            if sample and not finding.counts_records:
                 out.append("Properties: `%s`" % "`, `".join(sample))
             elif sample:
                 more = finding.count - len(sample)
@@ -176,14 +177,14 @@ def render_markdown(report):
                    "result above is not mistaken for coverage it does not have.")
         out.append("")
         for result in report.not_run:
-            out.append("- **%s** — %s" % (result.title, result.reason))
+            out.append("- **%s**: %s" % (result.title, result.reason))
         out.append("")
 
     if report.errors:
         out.append("## Checks that errored")
         out.append("")
         for result in report.errors:
-            out.append("- **%s** — %s" % (result.title, result.reason))
+            out.append("- **%s**: %s" % (result.title, result.reason))
         out.append("")
 
     passing = report.by_status(Status.PASS)

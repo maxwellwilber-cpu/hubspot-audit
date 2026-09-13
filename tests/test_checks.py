@@ -310,3 +310,20 @@ def test_a_portal_with_no_pipeline_stages_skips_the_deal_stage_checks():
         assert "cannot be told apart" in result.reason
     # A check that does not depend on stages still runs.
     assert result_for(report, "deals.no_owner").status == Status.FAIL
+
+
+def test_deal_checks_report_not_run_when_no_deal_could_be_classified():
+    """Reaching the end of a scan unable to make the judgement the check exists
+    to make is not a clean result, and no findings would render as one."""
+    state = dirty_portal()
+    state.pipelines = []
+    state.properties["deals"].append(
+        {"name": "hs_is_closed", "label": "Is Closed", "type": "bool",
+         "fieldType": "booleancheckbox", "options": [], "hubspotDefined": True,
+         "calculated": False, "archived": False})
+    # The property exists on the portal but is blank on every record, so the
+    # resolver tries, fails, and the checks have to say so.
+    report = audit(state)
+    result = result_for(report, "deals.past_close_date")
+    assert result.status == Status.NOT_RUN
+    assert "could be classified" in result.reason

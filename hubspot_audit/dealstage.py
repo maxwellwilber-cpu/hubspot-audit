@@ -44,12 +44,13 @@ class StageResolver:
         self.has_won_property = schema.has("hs_is_closed_won")
         self.open_stage_ids = profile.open_stage_ids
         self.won_stage_ids = profile.closed_won_stage_ids
+        self.all_stage_ids = profile.all_stage_ids
 
     # -- availability ------------------------------------------------------
 
     def open_reason(self):
         """None if open/closed can be determined, else why it cannot."""
-        if self.has_closed_property or self.open_stage_ids:
+        if self.has_closed_property or self.all_stage_ids:
             return None
         return ("this portal has neither the hs_is_closed deal property nor any "
                 "pipeline stages, so open and closed deals cannot be told apart")
@@ -67,13 +68,24 @@ class StageResolver:
     # -- per record --------------------------------------------------------
 
     def is_open(self, record):
+        """True, False, or None when this record cannot be classified.
+
+        None matters: a portal that has the property but leaves it blank on a
+        record, and has no pipeline stages to fall back on, cannot be judged.
+        Returning False there would quietly treat every deal as closed and let
+        the open-deal checks pass having examined nothing.
+        """
         props = record.get("properties") or {}
         if self.has_closed_property and clean(props.get("hs_is_closed")):
             return not _truthy(props.get("hs_is_closed"))
+        if not self.all_stage_ids:
+            return None
         return clean(props.get("dealstage")) in self.open_stage_ids
 
     def is_won(self, record):
         props = record.get("properties") or {}
         if self.has_won_property and clean(props.get("hs_is_closed_won")):
             return _truthy(props.get("hs_is_closed_won"))
+        if not self.all_stage_ids:
+            return None
         return clean(props.get("dealstage")) in self.won_stage_ids

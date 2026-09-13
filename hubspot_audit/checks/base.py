@@ -18,6 +18,15 @@ enforces that, and the runner turns an empty scan into NOT_RUN with a reason.
 from ..models import Severity, errored, failed, not_run, passed
 
 
+class CheckNotApplicable(Exception):
+    """Raised from finish() when a check ran but could not classify anything.
+
+    Reaching the end of a scan having been unable to make the judgement the
+    check exists to make is not a clean result, and returning no findings would
+    render as one. The message becomes the NOT_RUN reason.
+    """
+
+
 class Check:
     check_id = "unset"
     title = "unset"
@@ -88,6 +97,8 @@ def run_check(check, profile, records_seen, build_findings):
         return not_run(check, "no %s records exist in this portal" % check.object_type)
     try:
         findings = [f for f in build_findings() if f.count]
+    except CheckNotApplicable as exc:
+        return not_run(check, str(exc))
     except Exception as exc:  # a broken check must not kill the audit
         return errored(check, "%s: %s" % (type(exc).__name__, exc))
     if findings:
