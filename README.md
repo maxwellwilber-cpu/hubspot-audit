@@ -165,12 +165,23 @@ guarantee, and a 50,000-contact portal.
 
 ## Built for what a real portal returns
 
-To be clear up front: this has been validated against a local server that
-implements HubSpot's documented v3 contract, not against a live portal. The
-shapes come from HubSpot's published specs; the first live run is still ahead.
+Run against a live HubSpot portal on 2026-09-14: 27 checks, 8 API requests, no
+errors. Two assumptions turned out to be wrong before that run, both since
+fixed, and one of them is a case where HubSpot's own documentation contradicts
+itself:
 
-What that server does test, because these are the things that break CRM
-integrations:
+- **A requested property with no value comes back as an explicit `null`, not as
+  an absent key.** The v3 object guides say null; the current object-APIs guide
+  says it will not appear at all. It is null. The test fake now matches.
+- **Real pipeline metadata serialises both `isClosed` and `probability` as
+  strings**, so `"1.0"` rather than `1.0`.
+
+Confirmed as expected: `hs_is_closed` and `hs_is_closed_won` both exist on
+deals, so the per-record path is the one that runs rather than the fallback;
+lifecycle stages include the internal `customer` value; and the owners endpoint
+returns no paging block for a single-owner portal.
+
+The things that break CRM integrations, and what this does about them:
 
 | Problem | Handling |
 |---|---|
@@ -215,16 +226,25 @@ docs show one that does.
 
 ## Running it against your own portal
 
-You need a HubSpot private app token with **read** scopes only.
+You need a HubSpot **Service Key** with read scopes only.
 
-1. In HubSpot: **Settings → Integrations → Private Apps → Create a private app**
+Service Keys are HubSpot's current credential for single-account API access.
+Legacy private app creation is being disabled on 28 September 2026 for new
+accounts and 26 October 2026 for existing ones, so any guide still telling you
+to create a private app is about to stop working. Existing private app tokens
+keep working and this tool accepts either.
+
+1. In HubSpot: **Settings → Integrations → Service Keys → Create service key**
 2. Name it something like `CRM audit (read only)`
-3. On the **Scopes** tab, tick only these:
+3. Add only these scopes, read and not write:
    - `crm.objects.contacts.read`
    - `crm.objects.companies.read`
    - `crm.objects.deals.read`
    - `crm.objects.owners.read`
-4. Create the app and copy the access token
+4. Create it and copy the key
+
+It authenticates as a bearer token against the same v3 endpoints, so nothing
+else changes.
 
 Then:
 
@@ -282,6 +302,7 @@ these.
 - The duplicate rules are exact-match after normalization. There is no fuzzy
   matching, on purpose: a review queue somebody trusts beats a merge suggestion
   they do not.
-- Not yet run against a live portal.
+- The live run so far covered a portal with contacts and companies but no deal
+  records, so the deal checks are still exercised only against the fake.
 
 MIT licensed.

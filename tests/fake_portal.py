@@ -11,9 +11,10 @@ Response shapes follow HubSpot's published v3 documentation:
   properties: {"results":[{"name","label","type","fieldType",...}]}
   429 body:   {"status","message","errorType":"RATE_LIMIT","policyName","correlationId"}
 
-The properties shape is assembled from HubSpot's documented field list rather
-than from a published literal example, so it is the thing in here most worth
-re-checking the first time this runs against a live portal.
+Checked against a live portal on 2026-09-14. Two things it got wrong before
+that run, both now fixed here: a requested-but-unset property comes back as an
+explicit null rather than an absent key, and real pipeline stage metadata
+serialises both isClosed and probability as strings.
 """
 
 import json
@@ -56,8 +57,8 @@ class PortalState:
 
         # When True the portal honours the `properties` and `associations`
         # query parameters the way the real API does: anything not asked for is
-        # simply absent from the response. This is what catches a check that
-        # reads a property it never declared.
+        # absent, and anything asked for but unset comes back null. This is what
+        # catches a check that reads a property it never declared.
         self.strict_params = True
 
         # Cursor games. When True, the portal hands back a cursor it has
@@ -252,11 +253,17 @@ class _Handler(BaseHTTPRequestHandler):
         requested = set(self.DEFAULT_PROPERTIES)
         for value in query.get("properties", []):
             requested.update(p.strip() for p in value.split(",") if p.strip())
+        stored = record.get("properties") or {}
         projected = dict(record)
-        projected["properties"] = {
-            k: v for k, v in (record.get("properties") or {}).items()
-            if k in requested
-        }
+        # Confirmed against a live portal on 2026-09-14: a property that was
+        # requested but has no value comes back as an explicit null, not as an
+        # absent key. HubSpot's own docs contradict themselves on this, so the
+        # fake models what the API actually did.
+        projected["properties"] = {name: stored.get(name) for name in requested
+                                   if name in stored or name not in self.DEFAULT_PROPERTIES}
+        for name in self.DEFAULT_PROPERTIES:
+            if name in stored:
+                projected["properties"][name] = stored[name]
         association_types = set()
         for value in query.get("associations", []):
             association_types.update(a.strip() for a in value.split(",") if a.strip())

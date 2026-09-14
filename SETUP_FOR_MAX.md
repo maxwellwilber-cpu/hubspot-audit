@@ -25,52 +25,42 @@ gh repo edit maxwellwilber-cpu/hubspot-audit \
   --add-topic data-quality --add-topic api-integration
 ```
 
-## 2. A HubSpot developer test account and a read-only token
+## 2. Done: validated against a live portal
 
-I cannot create accounts, so this part is yours. It takes about five minutes
-and it is the last thing standing between this repo and a claim that it has
-been validated against a real portal.
+Ran clean on 2026-09-14. 27 checks, 8 API requests, no errors.
 
-1. Go to developers.hubspot.com and create a free developer account
-2. Inside it, create a **test account** (developer accounts have a menu for
-   this; a test account comes pre-populated with sample contacts and deals)
-3. In that test account: **Settings > Integrations > Private Apps > Create a
-   private app**
-4. Name it `CRM audit (read only)`
-5. On the **Scopes** tab tick only these four:
-   - `crm.objects.contacts.read`
-   - `crm.objects.companies.read`
-   - `crm.objects.deals.read`
-   - `crm.objects.owners.read`
-6. Create it, copy the access token, and paste it back to me
+Two assumptions were wrong and are now fixed:
 
-Then I run:
+- A requested property with no value comes back as an explicit `null`, not as
+  an absent key. HubSpot's own docs contradict themselves on this; the live API
+  settled it.
+- Real pipeline metadata serialises `isClosed` and `probability` as strings.
 
-```bash
-export HUBSPOT_TOKEN="pat-na1-..."
-python3 -m hubspot_audit --markdown report.md --csv fix.csv
-```
+Confirmed as expected: `hs_is_closed` and `hs_is_closed_won` both exist on
+deals, lifecycle stages include the internal `customer` value, and the owners
+endpoint omits the paging block for a single-owner portal.
 
-## What that run is actually for
+One gap left: the portal had contacts and companies but no deals, so the five
+deal checks and the two deal-association checks are still exercised only
+against the fake. Adding two or three deals in the UI and re-running would
+close it, and takes about two minutes.
 
-Everything in this repo has been tested against a local server that implements
-HubSpot's documented v3 contract. That is not the same as having run against a
-live portal, and the README says so in plain words rather than implying
-otherwise.
+### Credential note, worth knowing before you ask a client
 
-The specific things a live run would confirm or correct:
+HubSpot is retiring legacy private apps. Creation is disabled 28 September 2026
+for new accounts and 26 October 2026 for existing ones. The replacement is a
+**Service Key**: Settings > Integrations > Service Keys > Create service key,
+same four read scopes, same bearer-token authentication.
 
-- the exact shape of the `/crm/v3/properties/{type}` response, which I
-  assembled from HubSpot's documented field list rather than a published
-  literal example
-- whether `hs_is_closed` and `hs_is_closed_won` are actually present on deals
-  in a normal portal (the whole open/closed judgement prefers them)
-- what `metadata.isClosed` and `probability` really contain on a live pipeline
-- whether a property requested but unset comes back as null or is simply absent
+The README now documents Service Keys. Any guide still telling people to create
+a private app is weeks from being wrong, which is worth remembering if you send
+a client setup instructions you found somewhere else.
 
-If any of those differ, the fix is small and the tests already exist to pin it.
-Once it has run clean against a real portal, one line of the README changes and
-the repo stops carrying a caveat.
+### Delete the key when you are done
+
+Settings > Integrations > Service Keys, delete `CRM audit (read only)`. It has
+been pasted into a chat log and there is no reason to leave it live. Making a
+new one takes thirty seconds.
 
 ## Using it as a sales opener
 
